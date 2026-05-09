@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0b10" />
+  <title>Prinstax · Upload your photos</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="app">
+    <header>
+      <h1>Send your photos</h1>
+      <p class="hint">Up to 5 photos · printed on Instax</p>
+    </header>
+
+    <section class="upload-area" id="uploadArea">
+      <div class="upload-buttons">
+        <label class="btn ghost" for="filePicker">
+          Choose photos
+          <input id="filePicker" type="file" accept="image/*" multiple hidden />
+        </label>
+        <label class="btn ghost" for="cameraPicker">
+          Take a photo
+          <input id="cameraPicker" type="file" accept="image/*" capture="environment" hidden />
+        </label>
+      </div>
+      <p class="quota" id="quota">0 / 5 selected</p>
+    </section>
+
+    <section class="grid" id="previewGrid"></section>
+
+    <section class="form">
+      <label>
+        <span>Your name</span>
+        <input id="name" type="text" maxlength="80" autocomplete="name" required />
+      </label>
+      <label>
+        <span>Date / event</span>
+        <input id="date" type="text" maxlength="40" placeholder="e.g. May 9, 2026 · birthday" />
+      </label>
+      <label class="consent">
+        <input id="consent" type="checkbox" />
+        <span>I agree my photo will be printed and deleted within 24 hours.</span>
+      </label>
+    </section>
+
+    <button id="sendBtn" class="btn primary" disabled>Send to print</button>
+
+    <p id="status" class="status"></p>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
