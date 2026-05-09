@@ -1,7 +1,7 @@
 /**
  * PrintStax — Client upload app (Firebase Hosting)
  *
- * LOCAL DEV: If /__/firebase/init.js returns 404, uncomment and fill in:
+ * LOCAL DEV: If /__/firebase/init.js returns 404, uncomment and fill in below:
  *
  * firebase.initializeApp({
  *   apiKey: "...",
@@ -22,7 +22,7 @@ const MAX_SIZE_MB = 15;
 // ─── State ────────────────────────────────────────────────────────────────────
 let sessionId  = null;
 let session    = null;
-let files      = [];   // File[]
+let files      = [];
 let clientName = '';
 let clientDate = '';
 
@@ -44,6 +44,13 @@ function showError(title, body) {
   document.getElementById('error-title').textContent = title;
   document.getElementById('error-body').textContent  = body;
   showView('error');
+}
+
+function setStep(n) {
+  document.querySelectorAll('.step').forEach((el, i) => {
+    el.classList.toggle('active', i + 1 === n);
+    el.classList.toggle('completed', i + 1 < n);
+  });
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -79,34 +86,35 @@ function showError(title, body) {
   }
 })();
 
-// ─── Step navigation ──────────────────────────────────────────────────────────
+// ─── Form ─────────────────────────────────────────────────────────────────────
 function bindFormEvents() {
-  const inpName   = document.getElementById('inp-name');
-  const inpDate   = document.getElementById('inp-date');
-  const stepInfo  = document.getElementById('step-info');
-  const stepPhotos= document.getElementById('step-photos');
-  const consentWrap = document.getElementById('consent-wrap');
+  const inpName    = document.getElementById('inp-name');
+  const inpDate    = document.getElementById('inp-date');
+  const stepInfo   = document.getElementById('step-info');
+  const stepPhotos = document.getElementById('step-photos');
 
   document.getElementById('btn-next').addEventListener('click', () => {
     clientName = inpName.value.trim();
-    if (!clientName) { inpName.focus(); return; }
+    if (!clientName) { inpName.focus(); inpName.style.borderColor = 'var(--md-sys-color-error)'; return; }
+    inpName.style.borderColor = '';
     clientDate = inpDate.value;
     stepInfo.classList.add('hidden');
     stepPhotos.classList.remove('hidden');
-    consentWrap.classList.remove('hidden');
+    setStep(2);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
   document.getElementById('btn-back').addEventListener('click', () => {
     stepPhotos.classList.add('hidden');
-    consentWrap.classList.add('hidden');
     stepInfo.classList.remove('hidden');
+    setStep(1);
   });
 
-  // File picker
   const fileInput = document.getElementById('file-input');
   const dropZone  = document.getElementById('drop-zone');
 
   fileInput.addEventListener('change', () => handleFiles([...fileInput.files]));
+
   dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
   dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
   dropZone.addEventListener('drop', e => {
@@ -120,51 +128,55 @@ function bindFormEvents() {
 }
 
 function handleFiles(incoming) {
-  const images = incoming.filter(f => f.type.startsWith('image/'));
+  const images   = incoming.filter(f => f.type.startsWith('image/'));
   const oversized = images.filter(f => f.size > MAX_SIZE_MB * 1024 * 1024);
-  if (oversized.length) {
-    alert(`Some files exceed ${MAX_SIZE_MB} MB and were skipped.`);
-  }
+  if (oversized.length) alert(`Some files exceed ${MAX_SIZE_MB} MB and were skipped.`);
   const valid = images.filter(f => f.size <= MAX_SIZE_MB * 1024 * 1024);
   files = [...files, ...valid].slice(0, MAX_FILES);
   renderPreviews();
 }
 
-function qualityLabel(file) {
-  const mp = file.size / (1024 * 1024 * 0.3); // rough megapixel proxy
+function qualityOf(file) {
+  const mp = file.size / (1024 * 1024 * 0.3);
   if (mp >= 1.0) return { cls: 'quality-good', text: 'Good' };
   if (mp >= 0.3) return { cls: 'quality-warn', text: 'OK'   };
   return { cls: 'quality-bad', text: 'Low' };
 }
 
 function renderPreviews() {
-  const grid    = document.getElementById('preview-grid');
-  const submitBtn = document.getElementById('btn-submit');
+  const grid       = document.getElementById('preview-grid');
+  const submitBtn  = document.getElementById('btn-submit');
+  const consentWrap = document.getElementById('consent-wrap');
+
   grid.innerHTML = '';
 
   if (files.length === 0) {
     grid.classList.add('hidden');
+    consentWrap.classList.add('hidden');
     submitBtn.classList.add('hidden');
     updateSubmitBtn();
     return;
   }
 
   grid.classList.remove('hidden');
+  consentWrap.classList.remove('hidden');
 
   files.forEach((f, i) => {
-    const url  = URL.createObjectURL(f);
-    const q    = qualityLabel(f);
+    const url = URL.createObjectURL(f);
+    const q   = qualityOf(f);
     const item = document.createElement('div');
     item.className = 'preview-item';
     item.innerHTML = `
-      <img src="${url}" alt="photo ${i + 1}" />
-      <button class="remove-btn" data-idx="${i}">✕</button>
-      <span class="quality-badge ${q.cls}">${q.text}</span>
+      <img src="${url}" alt="photo ${i + 1}" loading="lazy" />
+      <button class="remove-fab" data-idx="${i}" title="Remove">
+        <span class="material-symbols-rounded">close</span>
+      </button>
+      <span class="quality-chip ${q.cls}">${q.text}</span>
     `;
     grid.appendChild(item);
   });
 
-  grid.querySelectorAll('.remove-btn').forEach(btn => {
+  grid.querySelectorAll('.remove-fab').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
       files.splice(Number(btn.dataset.idx), 1);
@@ -178,54 +190,51 @@ function renderPreviews() {
 function updateSubmitBtn() {
   const consent = document.getElementById('chk-consent').checked;
   const btn = document.getElementById('btn-submit');
-  if (files.length > 0 && consent) {
-    btn.classList.remove('hidden');
-    btn.disabled = false;
-  } else {
-    btn.classList.add('hidden');
-  }
+  const show = files.length > 0 && consent;
+  btn.classList.toggle('hidden', !show);
+  btn.disabled = !show;
 }
 
 // ─── Submit ───────────────────────────────────────────────────────────────────
 async function handleSubmit() {
   const consent = document.getElementById('chk-consent').checked;
-  if (!consent)        { alert('Please accept the consent checkbox.'); return; }
-  if (files.length < 1){ alert('Please select at least one photo.');   return; }
+  if (!consent)         { alert('Please accept the consent checkbox.'); return; }
+  if (files.length < 1) { alert('Please select at least one photo.'); return; }
 
   showView('uploading');
-  const statusEl  = document.querySelector('.upload-status');
+  const statusEl   = document.getElementById('upload-status');
   const progressEl = document.getElementById('progress-bar');
 
   try {
     const images = [];
+
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       statusEl.textContent = `Uploading photo ${i + 1} of ${files.length}…`;
-      progressEl.style.width = `${((i) / files.length) * 90}%`;
+      progressEl.style.width = `${(i / files.length) * 85}%`;
 
-      const ext      = file.name.split('.').pop() || 'jpg';
-      const uuid     = crypto.randomUUID();
+      const ext         = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const uuid        = crypto.randomUUID();
       const storagePath = `sessions/${sessionId}/${uuid}.${ext}`;
-      const fileRef  = storage.ref(storagePath);
-      const snap     = await fileRef.put(file);
+      const fileRef     = storage.ref(storagePath);
+      const snap        = await fileRef.put(file);
       const downloadUrl = await snap.ref.getDownloadURL();
 
       images.push({
-        id:          uuid,
+        id:            uuid,
         storagePath,
         downloadUrl,
-        originalName: file.name,
-        size:        file.size,
-        uploadedAt:  Date.now(),
-        hsl:         { hue: 0, saturation: 0, lightness: 0 },
         processedPath: null,
-        processedUrl: null,
-        approved:    false,
-        printed:     false,
+        processedUrl:  null,
+        originalName:  file.name,
+        size:          file.size,
+        uploadedAt:    Date.now(),
+        hsl:           { hue: 0, saturation: 0, lightness: 0 },
+        approved:      false,
+        printed:       false,
       });
     }
 
-    // Update Firestore session
     statusEl.textContent = 'Saving…';
     progressEl.style.width = '95%';
 

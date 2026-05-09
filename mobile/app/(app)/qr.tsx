@@ -1,13 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ActivityIndicator, Share, ScrollView,
 } from 'react-native';
-import QRCode from 'react-native-qrcode-svg';
+import QRCode from 'qrcode';
+import { SvgXml } from 'react-native-svg';
 import { router } from 'expo-router';
 import { createSession, deleteSession } from '../../src/lib/api';
 
 interface ActiveSession { id: string; url: string }
 type Step = 'idle' | 'generating' | 'ready' | 'error';
+
+function QRImage({ value }: { value: string }) {
+  const [svg, setSvg] = useState('');
+
+  useEffect(() => {
+    QRCode.toString(value, {
+      type: 'svg',
+      margin: 2,
+      width: 220,
+      color: { dark: '#0A0A0A', light: '#FFFFFF' },
+    })
+      .then(setSvg)
+      .catch(console.error);
+  }, [value]);
+
+  if (!svg) return <ActivityIndicator color="#F97316" />;
+  return <SvgXml xml={svg} width={220} height={220} />;
+}
 
 export default function QRScreen() {
   const [step, setStep]         = useState<Step>('idle');
@@ -17,10 +36,7 @@ export default function QRScreen() {
   async function generate() {
     setStep('generating');
     setErrorMsg('');
-
-    // Discard unused previous session
     if (session) await deleteSession(session.id).catch(() => {});
-
     try {
       const s = await createSession();
       setSession(s);
@@ -109,9 +125,9 @@ export default function QRScreen() {
       {step === 'ready' && session && (
         <View className="items-center px-5 gap-5">
 
-          {/* QR card */}
-          <View className="bg-white p-5 rounded-3xl shadow-lg">
-            <QRCode value={session.url} size={220} color="#0A0A0A" backgroundColor="#FFFFFF" />
+          {/* QR card — white background so the dark QR is scannable */}
+          <View className="bg-white p-5 rounded-3xl shadow-lg items-center justify-center" style={{ minWidth: 252, minHeight: 252 }}>
+            <QRImage value={session.url} />
           </View>
 
           {/* Status info */}

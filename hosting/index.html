@@ -4,99 +4,152 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PrintStax — Upload Photos</title>
+
+  <!-- Roboto + Material Icons (from Google Fonts / MUI icon set) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Firebase compat SDK (works with /__/firebase/init.js auto-config) -->
+  <!-- Firebase compat SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-storage-compat.js"></script>
-
   <!--
-    Auto-configure Firebase when served from Firebase Hosting.
-    For LOCAL dev: comment out the line below and uncomment the manual config in app.js.
+    Auto-configure Firebase when deployed to Firebase Hosting.
+    LOCAL DEV: If this 404s, uncomment the manual config block in app.js.
   -->
   <script src="/__/firebase/init.js"></script>
 </head>
 <body>
   <div id="root">
+
     <!-- ── Loading ──────────────────────────────────────────── -->
     <div id="view-loading" class="view center">
-      <div class="spinner"></div>
-      <p class="muted">Loading…</p>
+      <div class="md-progress-ring">
+        <svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke-width="4"/></svg>
+      </div>
+      <p class="text-secondary">Loading…</p>
     </div>
 
     <!-- ── Error ────────────────────────────────────────────── -->
     <div id="view-error" class="view center hidden">
-      <div class="icon-wrap">❌</div>
+      <div class="md-icon-circle error">
+        <span class="material-symbols-rounded">error</span>
+      </div>
       <h2 id="error-title">Session not found</h2>
-      <p id="error-body" class="muted"></p>
+      <p id="error-body" class="text-secondary"></p>
     </div>
 
     <!-- ── Upload form ──────────────────────────────────────── -->
     <div id="view-form" class="view hidden">
-      <header>
-        <div class="logo-mark">P</div>
+
+      <!-- App bar -->
+      <div class="app-bar">
+        <div class="app-bar-logo">P</div>
         <div>
-          <h1>PrintStax</h1>
-          <p class="muted">Upload your photos for printing</p>
+          <span class="app-bar-title">PrintStax</span>
+          <span class="app-bar-subtitle">Upload your photos for printing</span>
         </div>
-      </header>
+      </div>
 
-      <div class="card">
-        <!-- Step 1: Info -->
-        <div id="step-info">
-          <label class="field-label">Your name *</label>
-          <input id="inp-name" type="text" placeholder="e.g. Sarah Johnson" autocomplete="name" />
+      <div class="content-wrap">
 
-          <label class="field-label" style="margin-top:16px">Event / shoot date (optional)</label>
-          <input id="inp-date" type="date" />
-
-          <button id="btn-next" class="btn-primary" style="margin-top:20px">Next →</button>
+        <!-- Stepper -->
+        <div class="stepper" id="stepper">
+          <div class="step active" id="step-dot-1">
+            <div class="step-circle">1</div>
+            <span class="step-label">Your Info</span>
+          </div>
+          <div class="step-line"></div>
+          <div class="step" id="step-dot-2">
+            <div class="step-circle">2</div>
+            <span class="step-label">Photos</span>
+          </div>
         </div>
 
-        <!-- Step 2: Photos -->
+        <!-- ── Step 1: Info ─────────────────────────────────── -->
+        <div id="step-info" class="card">
+          <div class="field">
+            <label class="field-label">
+              <span class="material-symbols-rounded field-icon">person</span>
+              Your name *
+            </label>
+            <input id="inp-name" type="text" placeholder="e.g. Sarah Johnson" autocomplete="name" class="md-input" />
+          </div>
+
+          <div class="field">
+            <label class="field-label">
+              <span class="material-symbols-rounded field-icon">calendar_today</span>
+              Event / shoot date <span class="optional">(optional)</span>
+            </label>
+            <input id="inp-date" type="date" class="md-input" />
+          </div>
+
+          <button id="btn-next" class="md-btn md-btn-primary" style="margin-top:8px">
+            Next
+            <span class="material-symbols-rounded">arrow_forward</span>
+          </button>
+        </div>
+
+        <!-- ── Step 2: Photos ───────────────────────────────── -->
         <div id="step-photos" class="hidden">
-          <p class="step-hint">Select 1–5 photos to print (max 15 MB each)</p>
 
-          <div id="drop-zone" class="drop-zone">
+          <div id="drop-zone" class="drop-zone card">
             <input id="file-input" type="file" accept="image/*" multiple />
-            <div class="drop-inner">
-              <span class="drop-icon">📷</span>
-              <p>Tap to choose photos</p>
-              <p class="muted small">or drag &amp; drop</p>
-            </div>
+            <span class="material-symbols-rounded drop-icon">cloud_upload</span>
+            <p class="drop-title">Tap to choose photos</p>
+            <p class="text-secondary small">or drag &amp; drop — max 5 photos, 15 MB each</p>
           </div>
 
           <div id="preview-grid" class="preview-grid hidden"></div>
 
-          <button id="btn-submit" class="btn-primary hidden">Upload &amp; Submit</button>
-          <button id="btn-back" class="btn-ghost">← Back</button>
-        </div>
-      </div>
+          <!-- Consent -->
+          <div id="consent-wrap" class="consent-card hidden">
+            <label class="checkbox-label">
+              <input id="chk-consent" type="checkbox" class="md-checkbox" />
+              <span>I consent to my photos being processed and printed for this event.</span>
+            </label>
+          </div>
 
-      <!-- Consent (always visible in step 2) -->
-      <div id="consent-wrap" class="consent hidden">
-        <label class="checkbox-label">
-          <input id="chk-consent" type="checkbox" />
-          I consent to my photos being processed and printed for this event.
-        </label>
+          <div class="action-row">
+            <button id="btn-back" class="md-btn md-btn-ghost">
+              <span class="material-symbols-rounded">arrow_back</span>
+              Back
+            </button>
+            <button id="btn-submit" class="md-btn md-btn-primary hidden" disabled>
+              <span class="material-symbols-rounded">print</span>
+              Submit Photos
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
 
     <!-- ── Uploading ─────────────────────────────────────────── -->
     <div id="view-uploading" class="view center hidden">
-      <div class="spinner"></div>
-      <p class="upload-status">Uploading…</p>
-      <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+      <div class="md-progress-ring">
+        <svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke-width="4"/></svg>
+      </div>
+      <p id="upload-status" class="upload-status-text">Uploading…</p>
+      <div class="md-linear-progress">
+        <div id="progress-bar" class="md-linear-progress-bar"></div>
+      </div>
     </div>
 
     <!-- ── Success ───────────────────────────────────────────── -->
     <div id="view-success" class="view center hidden">
-      <div class="icon-wrap success">✓</div>
+      <div class="md-icon-circle success">
+        <span class="material-symbols-rounded">check_circle</span>
+      </div>
       <h2>Photos submitted!</h2>
-      <p class="muted">The photographer will review and print your photos shortly.</p>
-      <p id="success-count" class="muted small"></p>
+      <p class="text-secondary">The photographer will review and print your photos shortly.</p>
+      <p id="success-count" class="text-tertiary small"></p>
     </div>
+
   </div>
 
   <script src="app.js"></script>

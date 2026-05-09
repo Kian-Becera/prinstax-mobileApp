@@ -36,7 +36,11 @@ Complete setup takes about 15–20 minutes.
 2. Click **New OAuth App**
 3. Fill in:
    - **Application name**: PrintStax Admin
-   - **Homepage URL**: `https://your-project.web.app`
+   - **Homepage URL**: This is **purely informational** — GitHub never checks it.
+     Use any of these (all work equally):
+     - Your Firebase Hosting URL: `https://your-project.web.app`
+     - Your GitHub profile: `https://github.com/Kian-Becera`
+     - A placeholder: `https://example.com`
    - **Authorization callback URL**: paste the one from Firebase (looks like `https://your-project.firebaseapp.com/__/auth/handler`)
 4. Click **Register application**
 5. Copy the **Client ID**
