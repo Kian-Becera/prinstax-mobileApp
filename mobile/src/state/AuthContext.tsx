@@ -1,69 +1,39 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import {
-  authenticateWithBiometrics,
-  isBiometricEnabled,
-  loginWithPassword,
-  setBiometricEnabled,
-} from '../lib/auth';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { auth, onAuthStateChanged, signOut, type User } from '../lib/auth';
 
 interface AuthContextValue {
-  authed: boolean;
+  user: User | null;
+  authenticated: boolean;
   loading: boolean;
-  loginPassword: (u: string, p: string) => Promise<boolean>;
-  loginBiometric: () => Promise<boolean>;
-  logout: () => void;
-  enableBiometric: () => Promise<void>;
-  disableBiometric: () => Promise<void>;
-  biometricEnabled: boolean;
+  logout: () => Promise<void>;
 }
 
-const Ctx = createContext<AuthContextValue | null>(null);
+const AuthContext = createContext<AuthContextValue>({
+  user: null,
+  authenticated: false,
+  loading: true,
+  logout: async () => {},
+});
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [authed, setAuthed] = useState(false);
+  const [user, setUser]       = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [biometricEnabled, setBioFlag] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      setBioFlag(await isBiometricEnabled());
-      setLoading(false);
-    })();
-  }, []);
+  useEffect(() => onAuthStateChanged(auth, firebaseUser => {
+    setUser(firebaseUser);
+    setLoading(false);
+  }), []);
 
-  const value = useMemo<AuthContextValue>(() => ({
-    authed,
-    loading,
-    biometricEnabled,
-    loginPassword: async (u, p) => {
-      const ok = await loginWithPassword(u, p);
-      if (ok) setAuthed(true);
-      return ok;
-    },
-    loginBiometric: async () => {
-      const ok = await authenticateWithBiometrics('Sign in to Prinstax');
-      if (ok) setAuthed(true);
-      return ok;
-    },
-    logout: () => setAuthed(false),
-    enableBiometric: async () => {
-      const ok = await authenticateWithBiometrics('Enable biometric sign-in');
-      if (ok) {
-        await setBiometricEnabled(true);
-        setBioFlag(true);
-      }
-    },
-    disableBiometric: async () => {
-      await setBiometricEnabled(false);
-      setBioFlag(false);
-    },
-  }), [authed, loading, biometricEnabled]);
+  const logout = async () => {
+    await signOut();
+    setUser(null);
+  };
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, authenticated: !!user, loading, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
-export const useAuth = (): AuthContextValue => {
-  const v = useContext(Ctx);
-  if (!v) throw new Error('useAuth outside AuthProvider');
-  return v;
-};
+export const useAuth = () => useContext(AuthContext);

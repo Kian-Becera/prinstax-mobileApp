@@ -1,0 +1,10 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Session images: public read, write by anyone (session ID is the access token)
+    match /sessions/{sessionId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

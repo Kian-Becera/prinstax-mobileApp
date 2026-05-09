@@ -2,53 +2,154 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0b0b10" />
-  <title>Prinstax · Upload your photos</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0A0A0A" />
+  <title>Prinstax — Upload Photos</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            surface: '#141414',
+            card: '#1E1E1E',
+            border: '#2A2A2A',
+          }
+        }
+      }
+    }
+  </script>
   <link rel="stylesheet" href="/style.css" />
 </head>
-<body>
-  <main class="app">
-    <header>
-      <h1>Send your photos</h1>
-      <p class="hint">Up to 5 photos · printed on Instax</p>
-    </header>
+<body class="bg-[#0A0A0A] text-white min-h-screen font-sans antialiased">
 
-    <section class="upload-area" id="uploadArea">
-      <div class="upload-buttons">
-        <label class="btn ghost" for="filePicker">
-          Choose photos
-          <input id="filePicker" type="file" accept="image/*" multiple hidden />
-        </label>
-        <label class="btn ghost" for="cameraPicker">
-          Take a photo
-          <input id="cameraPicker" type="file" accept="image/*" capture="environment" hidden />
-        </label>
+  <!-- ── Loading screen ─────────────────────────────────── -->
+  <div id="screen-loading" class="screen flex flex-col items-center justify-center min-h-screen gap-4">
+    <div class="w-12 h-12 rounded-full border-4 border-orange-500 border-t-transparent animate-spin"></div>
+    <p class="text-neutral-400 text-sm">Connecting…</p>
+  </div>
+
+  <!-- ── Error screen ───────────────────────────────────── -->
+  <div id="screen-error" class="screen hidden flex flex-col items-center justify-center min-h-screen gap-4 px-6 text-center">
+    <div class="text-4xl">⚠️</div>
+    <h2 class="text-xl font-semibold">Something went wrong</h2>
+    <p id="error-message" class="text-neutral-400 text-sm"></p>
+  </div>
+
+  <!-- ── Success screen ─────────────────────────────────── -->
+  <div id="screen-success" class="screen hidden flex flex-col items-center justify-center min-h-screen gap-4 px-6 text-center">
+    <div class="w-20 h-20 rounded-full bg-teal-500/20 flex items-center justify-center text-4xl">✓</div>
+    <h2 class="text-2xl font-bold">Photos Sent!</h2>
+    <p class="text-neutral-400 text-sm max-w-xs">Your photos have been sent to the print station. The admin will review and print them shortly.</p>
+    <p class="text-neutral-600 text-xs mt-2">Images are automatically deleted after 24 hours.</p>
+  </div>
+
+  <!-- ── Main upload form ───────────────────────────────── -->
+  <div id="screen-main" class="screen hidden flex flex-col min-h-screen">
+
+    <!-- Header -->
+    <div class="px-5 pt-10 pb-6">
+      <div class="flex items-center gap-2 mb-1">
+        <div class="w-2 h-2 rounded-full bg-orange-500"></div>
+        <span class="text-orange-500 text-xs font-semibold tracking-widest uppercase">Prinstax</span>
       </div>
-      <p class="quota" id="quota">0 / 5 selected</p>
-    </section>
+      <h1 class="text-2xl font-bold">Upload Your Photos</h1>
+      <p class="text-neutral-400 text-sm mt-1">Up to 5 photos · Printed on Instax Mini</p>
+    </div>
 
-    <section class="grid" id="previewGrid"></section>
+    <div class="flex-1 px-5 pb-24 space-y-6">
 
-    <section class="form">
-      <label>
-        <span>Your name</span>
-        <input id="name" type="text" maxlength="80" autocomplete="name" required />
-      </label>
-      <label>
-        <span>Date / event</span>
-        <input id="date" type="text" maxlength="40" placeholder="e.g. May 9, 2026 · birthday" />
-      </label>
-      <label class="consent">
-        <input id="consent" type="checkbox" />
-        <span>I agree my photo will be printed and deleted within 24 hours.</span>
-      </label>
-    </section>
+      <!-- Step 1: Details -->
+      <div class="bg-card rounded-2xl p-5 space-y-4">
+        <h2 class="font-semibold text-sm text-neutral-300 uppercase tracking-wider">Your Details</h2>
+        <div>
+          <label class="text-xs text-neutral-400 mb-1 block">Name *</label>
+          <input id="input-name" type="text" placeholder="Your name"
+            class="w-full bg-[#0A0A0A] border border-border rounded-xl px-4 py-3 text-white placeholder-neutral-600 focus:outline-none focus:border-orange-500 text-sm" />
+        </div>
+        <div>
+          <label class="text-xs text-neutral-400 mb-1 block">Date (optional)</label>
+          <input id="input-date" type="date"
+            class="w-full bg-[#0A0A0A] border border-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 text-sm" />
+        </div>
+      </div>
 
-    <button id="sendBtn" class="btn primary" disabled>Send to print</button>
+      <!-- Step 2: Images -->
+      <div class="bg-card rounded-2xl p-5 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="font-semibold text-sm text-neutral-300 uppercase tracking-wider">Photos</h2>
+          <span id="image-count" class="text-xs text-neutral-500">0 / 5</span>
+        </div>
 
-    <p id="status" class="status"></p>
-  </main>
+        <!-- Image grid -->
+        <div id="image-grid" class="grid grid-cols-3 gap-2"></div>
+
+        <!-- Add buttons -->
+        <div id="add-buttons" class="flex gap-2">
+          <button id="btn-camera" onclick="openCamera()"
+            class="flex-1 flex flex-col items-center gap-1.5 py-4 rounded-xl border border-dashed border-border text-neutral-500 hover:border-orange-500 hover:text-orange-400 active:scale-95 transition-all text-xs">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            Camera
+          </button>
+          <button id="btn-upload" onclick="openFilePicker()"
+            class="flex-1 flex flex-col items-center gap-1.5 py-4 rounded-xl border border-dashed border-border text-neutral-500 hover:border-orange-500 hover:text-orange-400 active:scale-95 transition-all text-xs">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+            Gallery
+          </button>
+        </div>
+
+        <!-- Hidden inputs -->
+        <input id="file-input" type="file" accept="image/*" multiple class="hidden" onchange="handleFiles(event)" />
+        <input id="camera-input" type="file" accept="image/*" capture="environment" class="hidden" onchange="handleFiles(event)" />
+
+        <!-- Quality warnings -->
+        <div id="quality-warnings" class="space-y-2 hidden"></div>
+      </div>
+
+      <!-- Step 3: Consent -->
+      <div class="bg-card rounded-2xl p-5">
+        <label class="flex items-start gap-3 cursor-pointer">
+          <div class="relative mt-0.5 flex-shrink-0">
+            <input id="consent-check" type="checkbox" class="sr-only peer" />
+            <div class="w-5 h-5 rounded border-2 border-border peer-checked:bg-orange-500 peer-checked:border-orange-500 transition-colors flex items-center justify-center">
+              <svg class="w-3 h-3 text-white hidden peer-checked:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+              </svg>
+            </div>
+          </div>
+          <span class="text-sm text-neutral-300 leading-relaxed">
+            I agree that my photo(s) will be printed and <span class="text-orange-400">permanently deleted within 24 hours</span>. I confirm I have the right to share these images.
+          </span>
+        </label>
+        <!-- Custom checkbox tick rendering -->
+        <script>
+          document.getElementById('consent-check').addEventListener('change', function() {
+            const box = this.parentElement.querySelector('div > div');
+            const tick = box.querySelector('svg');
+            if (this.checked) tick.classList.remove('hidden'); else tick.classList.add('hidden');
+          });
+        </script>
+      </div>
+
+    </div>
+
+    <!-- Floating submit bar -->
+    <div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/95 to-transparent">
+      <button id="btn-submit" onclick="submitForm()"
+        class="w-full py-4 rounded-2xl bg-orange-500 hover:bg-orange-600 active:scale-98 disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-sm tracking-wide transition-all">
+        Send to Print Station
+      </button>
+      <p id="submit-error" class="text-red-400 text-xs text-center mt-2 hidden"></p>
+    </div>
+
+  </div>
 
   <script src="/app.js"></script>
 </body>

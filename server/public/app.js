@@ -1,142 +1,175 @@
-(() => {
-  const MAX = 5;
-  const sessionId = location.pathname.split('/').pop();
+// Prinstax client web app
+(function () {
+  'use strict';
 
-  /** @type {{ file: File, dataUrl: string, megapixels: number, quality: 'low'|'med'|'high' }[]} */
-  const photos = [];
+  const MAX_IMAGES = 5;
+  // Instax Mini print area: 800x600 is a safe baseline (≈133 DPI at 6x4.5cm)
+  const MIN_MEGAPIXELS = 0.3;
+  const WARN_MEGAPIXELS = 1.0;
 
-  const $ = (sel) => document.querySelector(sel);
-  const grid = $('#previewGrid');
-  const quota = $('#quota');
-  const sendBtn = $('#sendBtn');
-  const statusEl = $('#status');
-  const filePicker = $('#filePicker');
-  const cameraPicker = $('#cameraPicker');
-  const consent = $('#consent');
-  const nameInput = $('#name');
+  let sessionId = null;
+  let selectedFiles = []; // { file, dataUrl, quality }
 
-  const setStatus = (msg, kind) => {
-    statusEl.textContent = msg || '';
-    statusEl.className = 'status' + (kind ? ' ' + kind : '');
-  };
+  // ── Screens ────────────────────────────────────────────────────────────────
+  function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+    document.getElementById(id).classList.remove('hidden');
+  }
 
-  const computeQuality = (img) => {
-    const mp = (img.naturalWidth * img.naturalHeight) / 1_000_000;
-    let label = 'high';
-    if (mp < 1.0) label = 'low';
-    else if (mp < 2.5) label = 'med';
-    return { mp, label };
-  };
+  function showError(msg) {
+    document.getElementById('error-message').textContent = msg;
+    showScreen('screen-error');
+  }
 
-  const refresh = () => {
-    grid.innerHTML = '';
-    photos.forEach((p, i) => {
-      const tile = document.createElement('div');
-      tile.className = 'tile';
+  // ── Init ────────────────────────────────────────────────────────────────────
+  async function init() {
+    const params = new URLSearchParams(window.location.search);
+    sessionId = params.get('session');
 
-      const img = document.createElement('img');
-      img.src = p.dataUrl;
-      tile.appendChild(img);
-
-      const badge = document.createElement('span');
-      badge.className = 'quality ' + p.quality;
-      badge.textContent =
-        p.quality === 'low'  ? `${p.megapixels.toFixed(1)}MP · low` :
-        p.quality === 'med'  ? `${p.megapixels.toFixed(1)}MP · ok`  :
-                               `${p.megapixels.toFixed(1)}MP · good`;
-      tile.appendChild(badge);
-
-      const remove = document.createElement('button');
-      remove.textContent = '×';
-      remove.addEventListener('click', () => {
-        photos.splice(i, 1);
-        refresh();
-      });
-      tile.appendChild(remove);
-
-      grid.appendChild(tile);
-    });
-    quota.textContent = `${photos.length} / ${MAX} selected`;
-    updateSendState();
-  };
-
-  const updateSendState = () => {
-    const ok = photos.length > 0 && nameInput.value.trim().length > 0 && consent.checked;
-    sendBtn.disabled = !ok;
-  };
-
-  const readFile = (file) => new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) {
-      reject(new Error('Not an image: ' + file.name));
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        const { mp, label } = computeQuality(img);
-        resolve({ file, dataUrl: reader.result, megapixels: mp, quality: label });
-      };
-      img.onerror = () => reject(new Error('Could not decode ' + file.name));
-      img.src = reader.result;
-    };
-    reader.onerror = () => reject(reader.error || new Error('read failed'));
-    reader.readAsDataURL(file);
-  });
-
-  const handleFiles = async (fileList) => {
-    const remaining = MAX - photos.length;
-    const taken = Array.from(fileList).slice(0, remaining);
-    if (fileList.length > remaining) {
-      setStatus(`Only ${remaining} more photo${remaining === 1 ? '' : 's'} allowed.`, 'error');
-    }
-    for (const f of taken) {
-      try {
-        const item = await readFile(f);
-        photos.push(item);
-      } catch (err) {
-        setStatus(err.message, 'error');
-      }
-    }
-    refresh();
-  };
-
-  filePicker.addEventListener('change', (e) => {
-    handleFiles(e.target.files);
-    e.target.value = '';
-  });
-  cameraPicker.addEventListener('change', (e) => {
-    handleFiles(e.target.files);
-    e.target.value = '';
-  });
-
-  consent.addEventListener('change', updateSendState);
-  nameInput.addEventListener('input', updateSendState);
-
-  sendBtn.addEventListener('click', async () => {
-    if (photos.length === 0) return;
-    sendBtn.disabled = true;
-    setStatus('Uploading…', 'busy');
-
-    const fd = new FormData();
-    fd.append('name', nameInput.value.trim());
-    fd.append('date', $('#date').value.trim());
-    fd.append('consent', 'true');
-    photos.forEach((p) => fd.append('images', p.file, p.file.name));
+    if (!sessionId) return showError('No session ID found. Please scan the QR code again.');
 
     try {
-      const res = await fetch(`/api/sessions/${sessionId}/upload`, { method: 'POST', body: fd });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${res.status}`);
+      const res = await fetch(`/api/sessions/${sessionId}`);
+      if (!res.ok) throw new Error('Session not found or expired.');
+      const session = await res.json();
+      if (session.status !== 'waiting') {
+        return showError('This session has already been used. Ask the admin to generate a new QR code.');
       }
-      setStatus('Sent! You can close this page now.', 'ok');
-      grid.innerHTML = '';
-      photos.length = 0;
-      quota.textContent = '';
-    } catch (err) {
-      setStatus(err.message || 'Upload failed', 'error');
-      sendBtn.disabled = false;
+      // Pre-fill today's date
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('input-date').value = today;
+      showScreen('screen-main');
+    } catch (e) {
+      showError(e.message || 'Could not connect to server.');
     }
-  });
+  }
+
+  // ── File handling ───────────────────────────────────────────────────────────
+  window.openFilePicker = () => {
+    if (selectedFiles.length >= MAX_IMAGES) return;
+    document.getElementById('file-input').click();
+  };
+
+  window.openCamera = () => {
+    if (selectedFiles.length >= MAX_IMAGES) return;
+    document.getElementById('camera-input').click();
+  };
+
+  window.handleFiles = async (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = ''; // reset so same file can be re-added
+    const remaining = MAX_IMAGES - selectedFiles.length;
+    const toAdd = files.slice(0, remaining);
+    for (const file of toAdd) {
+      const entry = await processFile(file);
+      selectedFiles.push(entry);
+    }
+    renderGrid();
+  };
+
+  async function processFile(file) {
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const dataUrl = e.target.result;
+        const img = new Image();
+        img.onload = () => {
+          const mp = (img.width * img.height) / 1_000_000;
+          let quality = 'good';
+          if (mp < MIN_MEGAPIXELS) quality = 'bad';
+          else if (mp < WARN_MEGAPIXELS) quality = 'warn';
+          resolve({ file, dataUrl, quality, width: img.width, height: img.height, mp });
+        };
+        img.src = dataUrl;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  window.removeImage = (index) => {
+    selectedFiles.splice(index, 1);
+    renderGrid();
+  };
+
+  function renderGrid() {
+    const grid = document.getElementById('image-grid');
+    const countEl = document.getElementById('image-count');
+    const addBtns = document.getElementById('add-buttons');
+    const warnings = document.getElementById('quality-warnings');
+
+    countEl.textContent = `${selectedFiles.length} / ${MAX_IMAGES}`;
+    grid.innerHTML = '';
+    warnings.innerHTML = '';
+
+    let hasWarning = false;
+
+    selectedFiles.forEach((entry, i) => {
+      const div = document.createElement('div');
+      div.className = 'img-thumb';
+      div.innerHTML = `
+        <img src="${entry.dataUrl}" alt="Photo ${i + 1}" />
+        <button class="remove-btn" onclick="removeImage(${i})">✕</button>
+        <span class="quality-badge quality-${entry.quality}">${entry.quality === 'good' ? 'OK' : entry.quality === 'warn' ? 'Low' : 'Too Low'}</span>
+      `;
+      grid.appendChild(div);
+
+      if (entry.quality !== 'good') {
+        hasWarning = true;
+        const w = document.createElement('div');
+        w.className = `text-xs px-3 py-2 rounded-lg ${entry.quality === 'bad' ? 'bg-red-500/10 text-red-400' : 'bg-orange-500/10 text-orange-400'}`;
+        w.textContent = entry.quality === 'bad'
+          ? `Photo ${i + 1}: Very low resolution (${entry.width}×${entry.height}) — print quality will be poor.`
+          : `Photo ${i + 1}: Low resolution (${entry.width}×${entry.height}) — print may look grainy.`;
+        warnings.appendChild(w);
+      }
+    });
+
+    warnings.classList.toggle('hidden', !hasWarning);
+    addBtns.classList.toggle('hidden', selectedFiles.length >= MAX_IMAGES);
+  }
+
+  // ── Submit ──────────────────────────────────────────────────────────────────
+  window.submitForm = async () => {
+    const name = document.getElementById('input-name').value.trim();
+    const date = document.getElementById('input-date').value;
+    const consent = document.getElementById('consent-check').checked;
+    const errEl = document.getElementById('submit-error');
+
+    errEl.classList.add('hidden');
+
+    if (!name) return showSubmitError('Please enter your name.');
+    if (selectedFiles.length === 0) return showSubmitError('Please add at least one photo.');
+    if (!consent) return showSubmitError('Please accept the consent checkbox.');
+
+    const btn = document.getElementById('btn-submit');
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+
+    try {
+      const formData = new FormData();
+      formData.append('clientName', name);
+      formData.append('date', date);
+      formData.append('consent', 'true');
+      selectedFiles.forEach(entry => formData.append('images', entry.file));
+
+      const res = await fetch(`/api/upload/${sessionId}`, { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Upload failed.');
+      showScreen('screen-success');
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Send to Print Station';
+      showSubmitError(e.message || 'Upload failed. Please try again.');
+    }
+  };
+
+  function showSubmitError(msg) {
+    const el = document.getElementById('submit-error');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+
+  // ── Boot ────────────────────────────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', init);
 })();

@@ -1,26 +1,25 @@
-const readEnv = (key: string, fallback = ''): string => {
-  const value = (process.env as Record<string, string | undefined>)[key];
-  return value && value.length > 0 ? value : fallback;
-};
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export const config = {
-  serverUrl: readEnv('EXPO_PUBLIC_SERVER_URL', 'http://192.168.1.10:4000'),
-  defaultAdmin: {
-    username: readEnv('EXPO_PUBLIC_ADMIN_USERNAME', 'admin'),
-    password: readEnv('EXPO_PUBLIC_ADMIN_PASSWORD', 'admin'),
-  },
-  firebase: {
-    apiKey: readEnv('EXPO_PUBLIC_FIREBASE_API_KEY'),
-    authDomain: readEnv('EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN'),
-    projectId: readEnv('EXPO_PUBLIC_FIREBASE_PROJECT_ID'),
-    storageBucket: readEnv('EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET'),
-    messagingSenderId: readEnv('EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
-    appId: readEnv('EXPO_PUBLIC_FIREBASE_APP_ID'),
-  },
-  imageRetentionMs: 24 * 60 * 60 * 1000,
-  maxImagesPerSession: 5,
-  instaxAspectRatio: 62 / 46,
-};
+const KEYS = {
+  CONNECTION_MODE: 'prinstax_connection_mode',
+  PRINTER_IP:      'prinstax_printer_ip',
+} as const;
 
-export const isFirebaseConfigured = (): boolean =>
-  Boolean(config.firebase.apiKey && config.firebase.projectId);
+export type ConnectionMode = 'bluetooth' | 'wifi';
+
+export async function getConnectionMode(): Promise<ConnectionMode> {
+  const v = await AsyncStorage.getItem(KEYS.CONNECTION_MODE);
+  return (v as ConnectionMode) ?? 'bluetooth';
+}
+
+export async function setConnectionMode(mode: ConnectionMode): Promise<void> {
+  await AsyncStorage.setItem(KEYS.CONNECTION_MODE, mode);
+}
+
+export async function getPrinterIp(): Promise<string> {
+  return (await AsyncStorage.getItem(KEYS.PRINTER_IP)) ?? '';
+}
+
+export async function setPrinterIp(ip: string): Promise<void> {
+  await AsyncStorage.setItem(KEYS.PRINTER_IP, ip);
+}

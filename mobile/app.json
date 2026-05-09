@@ -2,60 +2,61 @@
   "expo": {
     "name": "Prinstax",
     "slug": "prinstax",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
-    "scheme": "prinstax",
-    "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
     "splash": {
-      "backgroundColor": "#0b0b10"
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0A0A"
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.prinstax.mobile",
+      "bundleIdentifier": "com.prinstax.app",
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Authenticate as the Prinstax admin.",
-        "NSCameraUsageDescription": "Capture photos to print on the Instax printer.",
-        "NSPhotoLibraryUsageDescription": "Pick photos to print on the Instax printer.",
-        "NSBluetoothAlwaysUsageDescription": "Connect to the Instax printer over Bluetooth.",
-        "NSBluetoothPeripheralUsageDescription": "Connect to the Instax printer over Bluetooth.",
-        "NSLocalNetworkUsageDescription": "Connect to the Instax printer over your local Wi-Fi."
+        "NSCameraUsageDescription": "Camera access is required to capture photos for printing.",
+        "NSPhotoLibraryUsageDescription": "Photo library access is required to select images for printing.",
+        "NSBluetoothAlwaysUsageDescription": "Bluetooth is used to connect to the Instax printer.",
+        "NSBluetoothPeripheralUsageDescription": "Bluetooth is used to connect to the Instax printer."
       }
     },
     "android": {
-      "package": "com.prinstax.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0A0A"
+      },
+      "package": "com.prinstax.app",
       "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
         "BLUETOOTH",
         "BLUETOOTH_ADMIN",
         "BLUETOOTH_CONNECT",
         "BLUETOOTH_SCAN",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "INTERNET",
-        "ACCESS_WIFI_STATE",
-        "USE_BIOMETRIC",
-        "USE_FINGERPRINT",
-        "CAMERA"
+        "ACCESS_FINE_LOCATION"
       ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store",
-      "expo-local-authentication",
-      "expo-camera",
-      "expo-image-picker",
       [
-        "expo-build-properties",
-        {
-          "ios": { "deploymentTarget": "14.0" },
-          "android": { "compileSdkVersion": 34, "targetSdkVersion": 34, "minSdkVersion": 24 }
-        }
+        "expo-camera",
+        { "cameraPermission": "Allow Prinstax to access your camera." }
+      ],
+      [
+        "expo-image-picker",
+        { "photosPermission": "Allow Prinstax to access your photos." }
       ]
     ],
     "experiments": {
-      "typedRoutes": false
+      "typedRoutes": true
     },
-    "extra": {
-      "router": { "origin": false }
-    }
+    "scheme": "prinstax"
   }
 }

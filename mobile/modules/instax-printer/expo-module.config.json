@@ -1,9 +1,5 @@
 {
   "platforms": ["ios", "android"],
-  "ios": {
-    "modules": ["InstaxPrinterModule"]
-  },
-  "android": {
-    "modules": ["expo.modules.instaxprinter.InstaxPrinterModule"]
-  }
+  "ios": { "modules": ["InstaxPrinterModule"] },
+  "android": { "modules": ["expo.modules.instaxprinter.InstaxPrinterModule"] }
 }

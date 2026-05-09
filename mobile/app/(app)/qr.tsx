@@ -1,88 +1,158 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, Alert, Share } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View, Text, TouchableOpacity, ActivityIndicator, Share, ScrollView,
+} from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { buildClientUploadUrl, createServerSession } from '../../src/lib/api';
-import { createSession } from '../../src/lib/firebase';
+import { router } from 'expo-router';
+import { createSession, deleteSession } from '../../src/lib/api';
 
-const newId = (): string => {
-  const rnd = Math.random().toString(36).slice(2, 8);
-  return `s_${Date.now().toString(36)}_${rnd}`;
-};
+interface ActiveSession { id: string; url: string }
+type Step = 'idle' | 'generating' | 'ready' | 'error';
 
 export default function QRScreen() {
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [url, setUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [step, setStep]         = useState<Step>('idle');
+  const [session, setSession]   = useState<ActiveSession | null>(null);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const generate = async () => {
-    setLoading(true);
+  async function generate() {
+    setStep('generating');
+    setErrorMsg('');
+
+    // Discard unused previous session
+    if (session) await deleteSession(session.id).catch(() => {});
+
     try {
-      const id = newId();
-      await createServerSession(id);
-      await createSession(id).catch(() => {});
-      setSessionId(id);
-      setUrl(buildClientUploadUrl(id));
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      Alert.alert('Could not start session', msg);
-    } finally {
-      setLoading(false);
+      const s = await createSession();
+      setSession(s);
+      setStep('ready');
+    } catch (e: any) {
+      setErrorMsg(e.message ?? 'Failed to create session.');
+      setStep('error');
     }
-  };
+  }
 
-  useEffect(() => { generate(); }, []);
+  async function handleShare() {
+    if (!session) return;
+    await Share.share({ message: `Scan to upload your photos: ${session.url}`, url: session.url });
+  }
+
+  async function handleDiscard() {
+    if (!session) return;
+    await deleteSession(session.id).catch(() => {});
+    setSession(null);
+    setStep('idle');
+  }
 
   return (
-    <View style={styles.root}>
-      <Text style={styles.help}>
-        Have the client scan this code with their phone camera. They&apos;ll upload up to 5 photos.
-      </Text>
+    <ScrollView className="flex-1 bg-[#0A0A0A]" contentContainerStyle={{ paddingBottom: 40 }}>
 
-      <View style={styles.qrBox}>
-        {loading || !url ? (
-          <ActivityIndicator color="#5b8def" />
-        ) : (
-          <QRCode value={url} size={240} backgroundColor="#fff" color="#000" />
-        )}
+      {/* Header */}
+      <View className="px-5 pt-14 pb-6">
+        <Text className="text-neutral-500 text-xs font-semibold tracking-widest uppercase">Admin</Text>
+        <Text className="text-white text-2xl font-bold mt-0.5">QR Code</Text>
+        <Text className="text-neutral-500 text-sm mt-1">Single-use · Expires after 24 hours</Text>
       </View>
 
-      {url && (
-        <>
-          <Text style={styles.url} selectable>{url}</Text>
-          <Text style={styles.sessionId}>Session: {sessionId}</Text>
-        </>
+      {/* ── Idle ─────────────────────────────────────────────── */}
+      {step === 'idle' && (
+        <View className="items-center px-5 gap-5 py-6">
+          <View className="w-44 h-44 bg-card rounded-3xl items-center justify-center">
+            <Text className="text-7xl opacity-20">⬛</Text>
+          </View>
+          <Text className="text-neutral-500 text-sm text-center max-w-xs">
+            Generate a QR code and show it to your client — they scan it to upload their photos.
+          </Text>
+          <TouchableOpacity onPress={generate} className="px-12 py-4 bg-orange-500 rounded-2xl">
+            <Text className="text-white font-bold text-base">Generate QR Code</Text>
+          </TouchableOpacity>
+          <Text className="text-neutral-700 text-xs text-center max-w-xs">
+            Photos are stored on Firebase and auto-deleted after 24 h.
+          </Text>
+        </View>
       )}
 
-      <View style={styles.row}>
-        <Pressable
-          style={({ pressed }) => [styles.btn, pressed && styles.pressed]}
-          onPress={generate}
-          disabled={loading}
-        >
-          <Text style={styles.btnText}>New QR</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.btnGhost, pressed && styles.pressed]}
-          onPress={() => url && Share.share({ message: url })}
-          disabled={!url}
-        >
-          <Text style={styles.btnGhostText}>Share link</Text>
-        </Pressable>
-      </View>
-    </View>
+      {/* ── Error ────────────────────────────────────────────── */}
+      {step === 'error' && (
+        <View className="px-5 gap-5 py-6">
+          <View className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 gap-3">
+            <Text className="text-red-400 text-sm font-semibold">Failed to Create Session</Text>
+            <Text className="text-red-300 text-xs leading-relaxed">{errorMsg}</Text>
+            <View className="gap-2 mt-1">
+              <Text className="text-neutral-500 text-xs font-semibold uppercase tracking-wider">Check</Text>
+              <Text className="text-neutral-400 text-xs">1. Firebase project is configured correctly</Text>
+              <Text className="text-neutral-400 text-xs">2. EXPO_PUBLIC_* environment variables are set</Text>
+              <Text className="text-neutral-400 text-xs">3. You are signed in</Text>
+            </View>
+            <View className="flex-row gap-2 mt-1">
+              <TouchableOpacity onPress={() => router.push('/(app)/settings')}
+                className="flex-1 py-3 bg-neutral-800 rounded-xl items-center">
+                <Text className="text-neutral-300 font-semibold text-sm">⚙️  Settings</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={generate}
+                className="flex-1 py-3 bg-orange-500 rounded-xl items-center">
+                <Text className="text-white font-semibold text-sm">Retry</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* ── Generating ───────────────────────────────────────── */}
+      {step === 'generating' && (
+        <View className="items-center py-20 gap-4">
+          <ActivityIndicator color="#F97316" size="large" />
+          <Text className="text-neutral-500 text-sm">Creating session…</Text>
+        </View>
+      )}
+
+      {/* ── Ready ────────────────────────────────────────────── */}
+      {step === 'ready' && session && (
+        <View className="items-center px-5 gap-5">
+
+          {/* QR card */}
+          <View className="bg-white p-5 rounded-3xl shadow-lg">
+            <QRCode value={session.url} size={220} color="#0A0A0A" backgroundColor="#FFFFFF" />
+          </View>
+
+          {/* Status info */}
+          <View className="bg-card rounded-2xl p-4 w-full gap-2">
+            <View className="flex-row items-center gap-2">
+              <View className="w-2 h-2 rounded-full bg-teal-400" />
+              <Text className="text-teal-400 text-xs font-semibold">Active — waiting for client scan</Text>
+            </View>
+            <Text className="text-neutral-500 text-xs" numberOfLines={2}>{session.url}</Text>
+          </View>
+
+          {/* Actions */}
+          <View className="flex-row gap-3 w-full">
+            <TouchableOpacity onPress={handleShare}
+              className="flex-1 py-4 bg-card rounded-2xl items-center">
+              <Text className="text-white font-semibold text-sm">Share Link</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={generate}
+              className="flex-1 py-4 bg-orange-500 rounded-2xl items-center">
+              <Text className="text-white font-semibold text-sm">New QR</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity onPress={handleDiscard} className="py-2">
+            <Text className="text-neutral-600 text-sm">Discard this session</Text>
+          </TouchableOpacity>
+
+          {/* How it works */}
+          <View className="bg-card rounded-2xl p-4 w-full gap-2">
+            <Text className="text-neutral-500 text-xs font-semibold uppercase tracking-wider mb-1">How it works</Text>
+            {[
+              '1. Show this QR to your client',
+              '2. They scan and upload 1–5 photos',
+              '3. You get an instant notification',
+              '4. Review → Edit → Approve → Print',
+            ].map(s => (
+              <Text key={s} className="text-neutral-600 text-xs">{s}</Text>
+            ))}
+          </View>
+        </View>
+      )}
+    </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0b0b10', alignItems: 'center', padding: 24 },
-  help: { color: '#9b9bab', textAlign: 'center', marginTop: 8, marginBottom: 24, fontSize: 14 },
-  qrBox: { backgroundColor: '#fff', padding: 16, borderRadius: 12, minHeight: 280, minWidth: 280, alignItems: 'center', justifyContent: 'center' },
-  url: { color: '#cfd2dc', marginTop: 16, fontSize: 13 },
-  sessionId: { color: '#6b6b7b', marginTop: 6, fontSize: 11 },
-  row: { flexDirection: 'row', gap: 12, marginTop: 24 },
-  btn: { backgroundColor: '#5b8def', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 10 },
-  btnText: { color: '#fff', fontWeight: '600' },
-  btnGhost: { borderWidth: 1, borderColor: '#23232f', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 10 },
-  btnGhostText: { color: '#cfd2dc' },
-  pressed: { opacity: 0.85 },
-});

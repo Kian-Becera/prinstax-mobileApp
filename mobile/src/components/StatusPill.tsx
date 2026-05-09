@@ -1,25 +1,30 @@
 import React from 'react';
-import { Text, View, StyleSheet } from 'react-native';
+import { View, Text } from 'react-native';
 
-type Tone = 'ok' | 'warn' | 'bad' | 'idle';
+type Variant = 'waiting' | 'pending' | 'approved' | 'completed' | 'connected' | 'disconnected' | 'printing' | 'error';
 
-const toneColor: Record<Tone, { bg: string; fg: string }> = {
-  ok:   { bg: '#163d2c', fg: '#7ee2a8' },
-  warn: { bg: '#3d3416', fg: '#f0c969' },
-  bad:  { bg: '#3d1616', fg: '#f08383' },
-  idle: { bg: '#1f1f28', fg: '#9b9bab' },
+const config: Record<Variant, { label: string; dot: string; bg: string; text: string }> = {
+  waiting:      { label: 'Waiting',      dot: 'bg-neutral-500', bg: 'bg-neutral-800', text: 'text-neutral-400' },
+  pending:      { label: 'Pending',      dot: 'bg-orange-400',  bg: 'bg-orange-500/15', text: 'text-orange-400' },
+  approved:     { label: 'Approved',     dot: 'bg-teal-400',    bg: 'bg-teal-500/15',  text: 'text-teal-400'   },
+  completed:    { label: 'Completed',    dot: 'bg-teal-500',    bg: 'bg-teal-500/10',  text: 'text-teal-500'   },
+  connected:    { label: 'Connected',    dot: 'bg-teal-400',    bg: 'bg-teal-500/15',  text: 'text-teal-400'   },
+  disconnected: { label: 'Disconnected', dot: 'bg-neutral-500', bg: 'bg-neutral-800',  text: 'text-neutral-400' },
+  printing:     { label: 'Printing…',    dot: 'bg-orange-400',  bg: 'bg-orange-500/15', text: 'text-orange-400' },
+  error:        { label: 'Error',        dot: 'bg-red-400',     bg: 'bg-red-500/15',   text: 'text-red-400'    },
 };
 
-export function StatusPill({ label, tone = 'idle' }: { label: string; tone?: Tone }) {
-  const c = toneColor[tone];
+interface Props {
+  variant: Variant;
+  label?: string;
+}
+
+export default function StatusPill({ variant, label }: Props) {
+  const c = config[variant] ?? config.disconnected;
   return (
-    <View style={[styles.pill, { backgroundColor: c.bg }]}>
-      <Text style={[styles.text, { color: c.fg }]}>{label}</Text>
+    <View className={`flex-row items-center gap-1.5 px-2.5 py-1 rounded-full ${c.bg}`}>
+      <View className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+      <Text className={`text-xs font-medium ${c.text}`}>{label ?? c.label}</Text>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  pill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, alignSelf: 'flex-start' },
-  text: { fontSize: 12, fontWeight: '600' },
-});

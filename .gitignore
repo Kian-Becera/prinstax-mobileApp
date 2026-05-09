@@ -1,16 +1,16 @@
-# Node
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-
-
-# IDE
-.vscode/
-.idea/
-.DS_Store
-
-# Logs
-logs/
+.expo/
+dist/
+web-build/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
 *.log
+npm-debug.*
+.env
+server/uploads/
+server/data/

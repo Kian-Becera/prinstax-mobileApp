@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PrintStax — Upload Photos</title>
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Firebase compat SDK (works with /__/firebase/init.js auto-config) -->
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-storage-compat.js"></script>
+
+  <!--
+    Auto-configure Firebase when served from Firebase Hosting.
+    For LOCAL dev: comment out the line below and uncomment the manual config in app.js.
+  -->
+  <script src="/__/firebase/init.js"></script>
+</head>
+<body>
+  <div id="root">
+    <!-- ── Loading ──────────────────────────────────────────── -->
+    <div id="view-loading" class="view center">
+      <div class="spinner"></div>
+      <p class="muted">Loading…</p>
+    </div>
+
+    <!-- ── Error ────────────────────────────────────────────── -->
+    <div id="view-error" class="view center hidden">
+      <div class="icon-wrap">❌</div>
+      <h2 id="error-title">Session not found</h2>
+      <p id="error-body" class="muted"></p>
+    </div>
+
+    <!-- ── Upload form ──────────────────────────────────────── -->
+    <div id="view-form" class="view hidden">
+      <header>
+        <div class="logo-mark">P</div>
+        <div>
+          <h1>PrintStax</h1>
+          <p class="muted">Upload your photos for printing</p>
+        </div>
+      </header>
+
+      <div class="card">
+        <!-- Step 1: Info -->
+        <div id="step-info">
+          <label class="field-label">Your name *</label>
+          <input id="inp-name" type="text" placeholder="e.g. Sarah Johnson" autocomplete="name" />
+
+          <label class="field-label" style="margin-top:16px">Event / shoot date (optional)</label>
+          <input id="inp-date" type="date" />
+
+          <button id="btn-next" class="btn-primary" style="margin-top:20px">Next →</button>
+        </div>
+
+        <!-- Step 2: Photos -->
+        <div id="step-photos" class="hidden">
+          <p class="step-hint">Select 1–5 photos to print (max 15 MB each)</p>
+
+          <div id="drop-zone" class="drop-zone">
+            <input id="file-input" type="file" accept="image/*" multiple />
+            <div class="drop-inner">
+              <span class="drop-icon">📷</span>
+              <p>Tap to choose photos</p>
+              <p class="muted small">or drag &amp; drop</p>
+            </div>
+          </div>
+
+          <div id="preview-grid" class="preview-grid hidden"></div>
+
+          <button id="btn-submit" class="btn-primary hidden">Upload &amp; Submit</button>
+          <button id="btn-back" class="btn-ghost">← Back</button>
+        </div>
+      </div>
+
+      <!-- Consent (always visible in step 2) -->
+      <div id="consent-wrap" class="consent hidden">
+        <label class="checkbox-label">
+          <input id="chk-consent" type="checkbox" />
+          I consent to my photos being processed and printed for this event.
+        </label>
+      </div>
+    </div>
+
+    <!-- ── Uploading ─────────────────────────────────────────── -->
+    <div id="view-uploading" class="view center hidden">
+      <div class="spinner"></div>
+      <p class="upload-status">Uploading…</p>
+      <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+    </div>
+
+    <!-- ── Success ───────────────────────────────────────────── -->
+    <div id="view-success" class="view center hidden">
+      <div class="icon-wrap success">✓</div>
+      <h2>Photos submitted!</h2>
+      <p class="muted">The photographer will review and print your photos shortly.</p>
+      <p id="success-count" class="muted small"></p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

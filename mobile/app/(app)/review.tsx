@@ -1,177 +1,321 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
-  View, Text, StyleSheet, Image, Pressable, ScrollView, Alert, ActivityIndicator,
+  View, Text, ScrollView, TouchableOpacity, Image, Alert,
+  RefreshControl, ActivityIndicator, FlatList, Modal,
+  Dimensions, Pressable,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { absoluteUrl, fetchServerSession, markSessionCompleted, ServerSession } from '../../src/lib/api';
-import { connect, getStatus, print as printToInstax, InstaxStatus } from '../../src/lib/instaxPrinter';
-import { logPrint } from '../../src/lib/firebase';
-import { StatusPill } from '../../src/components/StatusPill';
+import { router, useFocusEffect } from 'expo-router';
+import {
+  getSessions, approveImages, deleteSession, type Session, type ImageEntry,
+} from '../../src/lib/api';
+import { logPrint } from '../../src/lib/api';
+import { InstaxPrinter } from '../../src/lib/instaxPrinter';
+import { formatTTL } from '../../src/lib/cleanup';
+import StatusPill from '../../src/components/StatusPill';
+
+const { width: SCREEN_W } = Dimensions.get('window');
+const CARD_W = SCREEN_W - 40;
+
+interface DateGroup { label: string; sessions: Session[] }
+
+function groupByDate(sessions: Session[]): DateGroup[] {
+  const map = new Map<string, Session[]>();
+  sessions.forEach(s => {
+    const ts = s.client?.date ? new Date(s.client.date).getTime() : s.createdAt;
+    const d     = new Date(ts);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const yest  = new Date(today); yest.setDate(yest.getDate() - 1);
+    let label: string;
+    if (d >= today)     label = 'Today';
+    else if (d >= yest) label = 'Yesterday';
+    else                label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    if (!map.has(label)) map.set(label, []);
+    map.get(label)!.push(s);
+  });
+  return Array.from(map.entries()).map(([label, sessions]) => ({ label, sessions }));
+}
 
 export default function ReviewScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
-  const [session, setSession] = useState<ServerSession | null>(null);
-  const [printer, setPrinter] = useState<InstaxStatus>({ state: 'disconnected' });
-  const [busyAll, setBusyAll] = useState(false);
-  const [busyOne, setBusyOne] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [printingId, setPrintingId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    if (!id) return;
-    const s = await fetchServerSession(id);
-    setSession(s);
-    setPrinter(await getStatus());
-  }, [id]);
+  const [previewVisible, setPreviewVisible]   = useState(false);
+  const [previewImages, setPreviewImages]     = useState<ImageEntry[]>([]);
+  const [previewIndex, setPreviewIndex]       = useState(0);
+  const [previewSession, setPreviewSession]   = useState<Session | null>(null);
 
-  useEffect(() => { load(); }, [load]);
-
-  const ensureConnected = async (): Promise<boolean> => {
-    let s = await getStatus();
-    if (s.state !== 'connected') s = await connect();
-    setPrinter(s);
-    return s.state === 'connected';
-  };
-
-  const printOne = async (imageUrl: string) => {
-    if (!session) return;
-    setBusyOne(imageUrl);
+  const fetchSessions = useCallback(async () => {
     try {
-      if (!(await ensureConnected())) {
-        Alert.alert('Printer not connected', 'Open Settings to connect to the Instax.');
-        return;
-      }
-      const fullUrl = absoluteUrl(imageUrl);
-      await printToInstax(fullUrl);
-      await logPrint({
-        sessionId: session.id,
-        imageUrl: fullUrl,
-        thumbnailUrl: fullUrl,
-        clientName: session.clientName,
-        printedAt: Date.now(),
-        status: 'success',
-      });
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      await logPrint({
-        sessionId: session.id, imageUrl, printedAt: Date.now(),
-        status: 'failed', errorMessage: msg, clientName: session.clientName,
-      }).catch(() => {});
-      Alert.alert('Print failed', msg);
-    } finally {
-      setBusyOne(null);
-    }
-  };
+      const s = await getSessions();
+      setSessions(s.filter(s => ['pending', 'approved'].includes(s.status)));
+    } catch { /* offline */ }
+  }, []);
 
-  const printAll = async () => {
-    if (!session) return;
-    setBusyAll(true);
+  useFocusEffect(useCallback(() => { fetchSessions(); }, [fetchSessions]));
+  const onRefresh = async () => { setRefreshing(true); await fetchSessions(); setRefreshing(false); };
+
+  function openPreview(session: Session, index: number) {
+    setPreviewSession(session);
+    setPreviewImages(session.images);
+    setPreviewIndex(index);
+    setPreviewVisible(true);
+  }
+
+  async function handleBatchApprove(session: Session) {
     try {
-      if (!(await ensureConnected())) {
-        Alert.alert('Printer not connected', 'Open Settings to connect to the Instax.');
-        return;
-      }
-      for (const img of session.imageUrls) {
-        try {
-          const full = absoluteUrl(img);
-          await printToInstax(full);
-          await logPrint({
-            sessionId: session.id, imageUrl: full, thumbnailUrl: full,
-            clientName: session.clientName, printedAt: Date.now(), status: 'success',
-          });
-        } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : String(e);
-          await logPrint({
-            sessionId: session.id, imageUrl: img, printedAt: Date.now(),
-            status: 'failed', errorMessage: msg, clientName: session.clientName,
-          }).catch(() => {});
-        }
-      }
-      await markSessionCompleted(session.id).catch(() => {});
-      Alert.alert('Batch complete', 'All images sent to the printer.');
-      router.back();
-    } finally {
-      setBusyAll(false);
-    }
-  };
+      await approveImages(session.id, 'all');
+      await fetchSessions();
+    } catch (e: any) { Alert.alert('Error', e.message); }
+  }
 
-  if (!session) {
+  async function handleDelete(session: Session) {
+    Alert.alert('Delete Session', `Remove all photos from ${session.client?.name ?? 'this client'}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => { await deleteSession(session.id); await fetchSessions(); },
+      },
+    ]);
+  }
+
+  async function handlePrint(session: Session, image: ImageEntry) {
+    if (InstaxPrinter.getStatus() !== 'connected') {
+      Alert.alert('Printer Not Connected', 'Connect your Instax printer in Settings.', [
+        { text: 'Open Settings', onPress: () => router.push('/(app)/settings') },
+        { text: 'Cancel' },
+      ]);
+      return;
+    }
+    setPrintingId(image.id);
+    try {
+      const url = image.processedUrl ?? image.downloadUrl;
+      await InstaxPrinter.printImage(url);
+      await logPrint(session.id, image.id);
+      await fetchSessions();
+    } catch (e: any) {
+      Alert.alert('Print Failed', e.message);
+    } finally {
+      setPrintingId(null);
+    }
+  }
+
+  if (sessions.length === 0 && !refreshing) {
     return (
-      <View style={[styles.root, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator color="#5b8def" />
+      <View className="flex-1 bg-[#0A0A0A] items-center justify-center px-10 gap-4">
+        <Text className="text-4xl">✅</Text>
+        <Text className="text-white font-semibold text-lg">All clear</Text>
+        <Text className="text-neutral-500 text-sm text-center">
+          No sessions pending review. Generate a QR code to get started.
+        </Text>
+        <TouchableOpacity onPress={() => router.push('/(app)/qr')}
+          className="px-6 py-3 bg-orange-500 rounded-xl mt-2">
+          <Text className="text-white font-semibold text-sm">Generate QR</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
-  const tone = printer.state === 'connected' ? 'ok' : printer.state === 'error' ? 'bad' : 'idle';
+  const groups = groupByDate(sessions);
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
-      <View style={styles.row}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>{session.clientName ?? 'Client'}</Text>
-          <Text style={styles.meta}>{session.clientDate ?? '—'} · {session.imageUrls.length} images</Text>
-        </View>
-        <StatusPill label={`Printer: ${printer.state}`} tone={tone} />
-      </View>
-
-      <Pressable
-        style={({ pressed }) => [styles.batchBtn, pressed && styles.pressed]}
-        onPress={() => Alert.alert(
-          'Print all?',
-          `Print ${session.imageUrls.length} images now?`,
-          [{ text: 'Cancel' }, { text: 'Print all', onPress: printAll }],
-        )}
-        disabled={busyAll || busyOne !== null}
+    <>
+      <ScrollView
+        className="flex-1 bg-[#0A0A0A]"
+        contentContainerStyle={{ paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F97316" />}
       >
-        <Text style={styles.batchText}>
-          {busyAll ? 'Printing batch…' : `Approve & print all (${session.imageUrls.length})`}
-        </Text>
-      </Pressable>
+        <View className="px-5 pt-14 pb-4">
+          <Text className="text-neutral-500 text-xs font-semibold tracking-widest uppercase">Admin</Text>
+          <Text className="text-white text-2xl font-bold mt-0.5">Review</Text>
+          <Text className="text-neutral-500 text-sm mt-1">
+            {sessions.length} session{sessions.length !== 1 ? 's' : ''} pending
+          </Text>
+        </View>
 
-      {session.imageUrls.map((img) => {
-        const full = absoluteUrl(img);
-        const busy = busyOne === img;
-        return (
-          <View key={img} style={styles.card}>
-            <Image source={{ uri: full }} style={styles.image} resizeMode="cover" />
-            <View style={styles.cardActions}>
-              <Pressable
-                style={({ pressed }) => [styles.action, pressed && styles.pressed]}
-                onPress={() => router.push({
-                  pathname: '/(app)/editor',
-                  params: { uri: full, sessionId: session.id, clientName: session.clientName ?? '' },
-                })}
-              >
-                <Text style={styles.actionText}>Edit</Text>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [styles.actionPrimary, pressed && styles.pressed]}
-                onPress={() => printOne(img)}
-                disabled={busy || busyAll}
-              >
-                <Text style={styles.actionPrimaryText}>{busy ? 'Printing…' : 'Print'}</Text>
-              </Pressable>
+        {groups.map(group => (
+          <View key={group.label} className="mb-6">
+            <View className="flex-row items-center px-5 mb-3 gap-2">
+              <View className="px-2.5 py-0.5 rounded-full bg-neutral-800">
+                <Text className="text-neutral-400 text-xs font-semibold">{group.label}</Text>
+              </View>
+              <View className="flex-1 h-px bg-border" />
             </View>
+
+            {group.sessions.map(session => (
+              <SessionWindow
+                key={session.id}
+                session={session}
+                printingId={printingId}
+                onImagePress={idx => openPreview(session, idx)}
+                onEdit={img => router.push({ pathname: '/(app)/editor', params: { sessionId: session.id, imageId: img.id } })}
+                onApproveAll={() => handleBatchApprove(session)}
+                onDelete={() => handleDelete(session)}
+                onPrint={img => handlePrint(session, img)}
+              />
+            ))}
           </View>
-        );
-      })}
-    </ScrollView>
+        ))}
+      </ScrollView>
+
+      {/* Fullscreen preview modal */}
+      <Modal visible={previewVisible} transparent animationType="fade" onRequestClose={() => setPreviewVisible(false)}>
+        <View className="flex-1 bg-black">
+          <TouchableOpacity onPress={() => setPreviewVisible(false)}
+            className="absolute top-14 right-5 z-10 w-9 h-9 rounded-full bg-white/20 items-center justify-center">
+            <Text className="text-white text-base font-bold">✕</Text>
+          </TouchableOpacity>
+          <View className="absolute top-14 left-5 z-10">
+            <Text className="text-white font-semibold">{previewSession?.client?.name}</Text>
+            <Text className="text-neutral-400 text-xs">{previewIndex + 1} / {previewImages.length}</Text>
+          </View>
+
+          <FlatList
+            data={previewImages}
+            horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+            initialScrollIndex={previewIndex}
+            getItemLayout={(_, i) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
+            onMomentumScrollEnd={e => setPreviewIndex(Math.round(e.nativeEvent.contentOffset.x / SCREEN_W))}
+            keyExtractor={i => i.id}
+            renderItem={({ item }) => (
+              <View style={{ width: SCREEN_W }} className="flex-1 items-center justify-center">
+                <Image
+                  source={{ uri: item.processedUrl ?? item.downloadUrl }}
+                  style={{ width: SCREEN_W, height: SCREEN_W }}
+                  resizeMode="contain"
+                />
+                <View className="flex-row gap-2 mt-4">
+                  {item.approved && (
+                    <View className="px-3 py-1 rounded-full bg-teal-500/20">
+                      <Text className="text-teal-400 text-xs font-semibold">Approved</Text>
+                    </View>
+                  )}
+                  {item.printed && (
+                    <View className="px-3 py-1 rounded-full bg-teal-500/20">
+                      <Text className="text-teal-400 text-xs font-semibold">Printed ✓</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+          />
+
+          {previewImages.length > 1 && (
+            <View className="flex-row justify-center gap-1.5 pb-10">
+              {previewImages.map((_, i) => (
+                <View key={i}
+                  className={`rounded-full ${i === previewIndex ? 'w-4 h-1.5 bg-orange-500' : 'w-1.5 h-1.5 bg-neutral-600'}`}
+                />
+              ))}
+            </View>
+          )}
+        </View>
+      </Modal>
+    </>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0b0b10' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  title: { color: '#fff', fontSize: 20, fontWeight: '700' },
-  meta: { color: '#9b9bab', marginTop: 4 },
-  batchBtn: { backgroundColor: '#5b8def', paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginVertical: 16 },
-  batchText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  card: { backgroundColor: '#15151d', borderRadius: 12, marginBottom: 12, overflow: 'hidden' },
-  image: { width: '100%', aspectRatio: 46 / 62, backgroundColor: '#000' },
-  cardActions: { flexDirection: 'row', padding: 10, gap: 8 },
-  action: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#23232f' },
-  actionText: { color: '#cfd2dc', fontWeight: '500' },
-  actionPrimary: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center', backgroundColor: '#5b8def' },
-  actionPrimaryText: { color: '#fff', fontWeight: '600' },
-  pressed: { opacity: 0.85 },
-});
+interface WindowProps {
+  session: Session; printingId: string | null;
+  onImagePress: (index: number) => void; onEdit: (img: ImageEntry) => void;
+  onApproveAll: () => void; onDelete: () => void; onPrint: (img: ImageEntry) => void;
+}
+
+function SessionWindow({ session, printingId, onImagePress, onEdit, onApproveAll, onDelete, onPrint }: WindowProps) {
+  const [activeIdx, setActiveIdx] = useState(0);
+  const listRef = useRef<FlatList>(null);
+
+  return (
+    <View className="mx-5 mb-4 bg-card rounded-3xl overflow-hidden border border-border">
+      <View className="px-4 pt-3 pb-2 flex-row items-center justify-between">
+        <View className="flex-1 mr-3">
+          <Text className="text-white font-semibold text-sm" numberOfLines={1}>
+            {session.client?.name ?? 'Unknown'}
+          </Text>
+          <Text className="text-neutral-500 text-xs mt-0.5">
+            {session.images.length} photo{session.images.length !== 1 ? 's' : ''}
+            {'  ·  '}{formatTTL(session.expiresAt)}
+          </Text>
+        </View>
+        <StatusPill variant={session.status as any} />
+      </View>
+
+      <FlatList
+        ref={listRef}
+        data={session.images}
+        horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={e => setActiveIdx(Math.round(e.nativeEvent.contentOffset.x / CARD_W))}
+        keyExtractor={i => i.id}
+        renderItem={({ item, index }) => {
+          const isPrinting = printingId === item.id;
+          return (
+            <Pressable onPress={() => onImagePress(index)} style={{ width: CARD_W }}>
+              <View style={{ width: CARD_W, aspectRatio: 62 / 46, position: 'relative' }}>
+                <Image
+                  source={{ uri: item.processedUrl ?? item.downloadUrl }}
+                  style={{ width: '100%', height: '100%' }}
+                  resizeMode="cover"
+                />
+                {isPrinting && (
+                  <View className="absolute inset-0 bg-black/70 items-center justify-center gap-2">
+                    <ActivityIndicator color="#F97316" size="large" />
+                    <Text className="text-orange-400 text-sm font-semibold">Printing…</Text>
+                  </View>
+                )}
+                {item.printed && (
+                  <View className="absolute inset-0 bg-black/50 items-center justify-center">
+                    <View className="bg-teal-500/90 px-4 py-2 rounded-xl">
+                      <Text className="text-white text-sm font-bold">Printed ✓</Text>
+                    </View>
+                  </View>
+                )}
+                {!item.printed && (
+                  <View className="absolute top-2 left-2 right-2 flex-row justify-between">
+                    <TouchableOpacity onPress={() => onEdit(item)}
+                      className="px-2.5 py-1 rounded-lg bg-black/60 flex-row items-center gap-1">
+                      <Text style={{ fontSize: 11 }}>✏️</Text>
+                      <Text className="text-white text-xs font-semibold">Edit</Text>
+                    </TouchableOpacity>
+                    {item.approved && !isPrinting && (
+                      <TouchableOpacity onPress={() => onPrint(item)}
+                        className="px-2.5 py-1 rounded-lg bg-orange-500/90 flex-row items-center gap-1">
+                        <Text style={{ fontSize: 11 }}>🖨️</Text>
+                        <Text className="text-white text-xs font-semibold">Print</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+                <View className="absolute bottom-2 right-2 w-6 h-6 rounded-full bg-black/50 items-center justify-center">
+                  <Text className="text-white text-xs">⛶</Text>
+                </View>
+              </View>
+            </Pressable>
+          );
+        }}
+      />
+
+      {session.images.length > 1 && (
+        <View className="flex-row justify-center gap-1.5 py-2">
+          {session.images.map((_, i) => (
+            <View key={i}
+              className={`rounded-full ${i === activeIdx ? 'w-3 h-1.5 bg-orange-500' : 'w-1.5 h-1.5 bg-neutral-700'}`}
+            />
+          ))}
+        </View>
+      )}
+
+      <View className="flex-row px-3 pb-3 pt-1 gap-2">
+        {session.status === 'pending' && (
+          <TouchableOpacity onPress={onApproveAll}
+            className="flex-1 py-2.5 bg-teal-500 rounded-xl items-center">
+            <Text className="text-white font-semibold text-sm">Approve All</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity onPress={onDelete}
+          className="py-2.5 px-4 bg-neutral-800 rounded-xl items-center">
+          <Text className="text-neutral-500 text-sm">Delete</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}

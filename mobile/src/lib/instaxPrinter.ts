@@ -1,79 +1,101 @@
-import { NativeModulesProxy } from 'expo-modules-core';
+/**
+ * Instax Printer interface — supports Bluetooth and WiFi connection modes.
+ *
+ * In Expo Go this module simulates the full printer lifecycle.
+ * For a production dev build, replace the scan/connect/print bodies with:
+ *   Bluetooth → react-native-ble-plx
+ *   WiFi      → Fujifilm Instax Share SDK or direct HTTP to the printer AP
+ */
 
-export type InstaxConnectionState = 'disconnected' | 'connecting' | 'connected' | 'printing' | 'error';
+import { getConnectionMode, type ConnectionMode } from './config';
 
-export interface InstaxStatus {
-  state: InstaxConnectionState;
-  deviceName?: string;
-  batteryLevel?: number;
-  filmRemaining?: number;
-  errorMessage?: string;
+export type PrinterStatus =
+  | 'disconnected'
+  | 'scanning'
+  | 'connecting'
+  | 'connected'
+  | 'printing'
+  | 'error';
+
+export interface PrinterDevice {
+  id: string;
+  name: string;
+  mode: ConnectionMode;
+  rssi?: number;   // Bluetooth signal strength
+  ip?: string;     // WiFi direct IP
 }
 
-interface InstaxPrinterNativeModule {
-  connect(deviceId?: string): Promise<InstaxStatus>;
-  disconnect(): Promise<InstaxStatus>;
-  getStatus(): Promise<InstaxStatus>;
-  print(imageUri: string): Promise<{ jobId: string }>;
-  scanForDevices(timeoutMs: number): Promise<Array<{ id: string; name: string; rssi: number }>>;
+type StatusListener = (status: PrinterStatus) => void;
+
+let _status: PrinterStatus = 'disconnected';
+let _listeners: StatusListener[] = [];
+let _connectedDevice: PrinterDevice | null = null;
+let _mode: ConnectionMode = 'bluetooth';
+
+function emit(s: PrinterStatus) {
+  _status = s;
+  _listeners.forEach(fn => fn(s));
 }
 
-const Native: InstaxPrinterNativeModule | undefined =
-  (NativeModulesProxy as unknown as Record<string, InstaxPrinterNativeModule | undefined>).InstaxPrinter;
+// Mock device pools per mode
+const BT_DEVICES: PrinterDevice[] = [
+  { id: 'BT-LINK2-A1B2', name: 'INSTAX MINI Link 2',  mode: 'bluetooth', rssi: -58 },
+  { id: 'BT-LINK-C3D4',  name: 'INSTAX MINI Link',    mode: 'bluetooth', rssi: -72 },
+  { id: 'BT-SQ-E5F6',    name: 'INSTAX SQUARE Link',  mode: 'bluetooth', rssi: -80 },
+];
 
-let mockState: InstaxStatus = { state: 'disconnected' };
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const WIFI_DEVICES: PrinterDevice[] = [
+  { id: 'WIFI-SP3-A1B2', name: 'INSTAX SHARE SP-3',  mode: 'wifi', ip: '192.168.0.1' },
+  { id: 'WIFI-EVO-C3D4', name: 'INSTAX Mini EVO',    mode: 'wifi', ip: '192.168.0.1' },
+];
 
-export const isNativeBacked = (): boolean => Boolean(Native);
+export const InstaxPrinter = {
+  getStatus(): PrinterStatus { return _status; },
+  getMode(): ConnectionMode  { return _mode;   },
+  getConnectedDevice(): PrinterDevice | null { return _connectedDevice; },
 
-export async function scanForDevices(timeoutMs = 4000) {
-  if (Native) return Native.scanForDevices(timeoutMs);
-  await sleep(800);
-  return [
-    { id: 'mock-instax-mini-1', name: 'INSTAX-MINI Link 2 (mock)', rssi: -52 },
-    { id: 'mock-instax-square-1', name: 'INSTAX SQUARE Link (mock)', rssi: -67 },
-  ];
-}
+  onStatusChange(fn: StatusListener): () => void {
+    _listeners.push(fn);
+    return () => { _listeners = _listeners.filter(l => l !== fn); };
+  },
 
-export async function connect(deviceId?: string): Promise<InstaxStatus> {
-  if (Native) return Native.connect(deviceId);
-  mockState = { state: 'connecting' };
-  await sleep(700);
-  mockState = {
-    state: 'connected',
-    deviceName: deviceId ?? 'INSTAX (mock)',
-    batteryLevel: 0.82,
-    filmRemaining: 8,
-  };
-  return mockState;
-}
+  async scan(): Promise<PrinterDevice[]> {
+    _mode = await getConnectionMode();
+    emit('scanning');
+    // Simulate scan time: BT is faster than WiFi AP discovery
+    await delay(_mode === 'bluetooth' ? 2000 : 3000);
+    emit('disconnected');
 
-export async function disconnect(): Promise<InstaxStatus> {
-  if (Native) return Native.disconnect();
-  mockState = { state: 'disconnected' };
-  return mockState;
-}
+    // In production:
+    //   bluetooth → ble.startDeviceScan() filtering for Instax service UUIDs
+    //   wifi      → scan for SSIDs matching /^INSTAX-/ or use mDNS on printer AP
+    return _mode === 'bluetooth' ? BT_DEVICES : WIFI_DEVICES;
+  },
 
-export async function getStatus(): Promise<InstaxStatus> {
-  if (Native) return Native.getStatus();
-  return mockState;
-}
+  async connect(device: PrinterDevice): Promise<boolean> {
+    _mode = device.mode;
+    emit('connecting');
+    await delay(device.mode === 'bluetooth' ? 2500 : 1800);
+    _connectedDevice = device;
+    emit('connected');
+    return true;
+  },
 
-export async function print(imageUri: string): Promise<{ jobId: string }> {
-  if (Native) return Native.print(imageUri);
-  if (mockState.state !== 'connected') {
-    throw new Error('Printer not connected');
-  }
-  mockState = { ...mockState, state: 'printing' };
-  await sleep(2200);
-  if (mockState.filmRemaining !== undefined) {
-    mockState = {
-      ...mockState,
-      state: 'connected',
-      filmRemaining: Math.max(0, mockState.filmRemaining - 1),
-    };
-  } else {
-    mockState = { ...mockState, state: 'connected' };
-  }
-  return { jobId: `mock-${Date.now()}` };
+  async disconnect(): Promise<void> {
+    _connectedDevice = null;
+    emit('disconnected');
+  },
+
+  async printImage(imageUrl: string): Promise<boolean> {
+    if (_status !== 'connected') throw new Error('Printer not connected');
+    emit('printing');
+    // Simulate ZINK thermal print ≈ 7–10 s
+    await delay(8000);
+    emit('connected');
+    return true;
+  },
+};
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
