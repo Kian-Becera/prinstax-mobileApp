@@ -1,0 +1,7 @@
+{
+  "name": "instax-printer",
+  "version": "0.1.0",
+  "description": "Local Expo module: Bluetooth bridge to Fujifilm Instax printers (stub).",
+  "main": "index.ts",
+  "private": true
+}

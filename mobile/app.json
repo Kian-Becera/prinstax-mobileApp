@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "Prinstax",
+    "slug": "prinstax",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "prinstax",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "backgroundColor": "#0b0b10"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.prinstax.mobile",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Authenticate as the Prinstax admin.",
+        "NSCameraUsageDescription": "Capture photos to print on the Instax printer.",
+        "NSPhotoLibraryUsageDescription": "Pick photos to print on the Instax printer.",
+        "NSBluetoothAlwaysUsageDescription": "Connect to the Instax printer over Bluetooth.",
+        "NSBluetoothPeripheralUsageDescription": "Connect to the Instax printer over Bluetooth.",
+        "NSLocalNetworkUsageDescription": "Connect to the Instax printer over your local Wi-Fi."
+      }
+    },
+    "android": {
+      "package": "com.prinstax.mobile",
+      "permissions": [
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
+        "BLUETOOTH_CONNECT",
+        "BLUETOOTH_SCAN",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "INTERNET",
+        "ACCESS_WIFI_STATE",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "CAMERA"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-local-authentication",
+      "expo-camera",
+      "expo-image-picker",
+      [
+        "expo-build-properties",
+        {
+          "ios": { "deploymentTarget": "14.0" },
+          "android": { "compileSdkVersion": 34, "targetSdkVersion": 34, "minSdkVersion": 24 }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": false
+    },
+    "extra": {
+      "router": { "origin": false }
+    }
+  }
+}
